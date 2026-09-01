@@ -39,9 +39,9 @@ niter = 5
 rot(φ) = [cos(φ) -sin(φ); sin(φ) cos(φ)]
 
 scenarios = [
-    (0.0, [-0.3, -1.0], 0.9),
-    (π / 4, [1.0, 0.0], 0.9),
-    (π / 2, [0.9, -0.436], 0.9),
+    (0.0, [-0.3, -1.0], 0.6),
+    (π / 4, [1.0, 0.0], 0.6),
+    (π / 2, [0.9, -0.436], 0.6),
 ]
 
 silent(f) = redirect_stdout(f, devnull)
@@ -49,7 +49,7 @@ fmt(v) = "($(round(v[1], digits=2)), $(round(v[2], digits=2)))"
 
 # Première passe : calcule (iter_rgd, iter_pogo, V, bbox) pour chaque scénario.
 results = []
-for (φ, x0_raw, α) in scenarios
+for (i, (φ, x0_raw, α)) in enumerate(scenarios)
     R = rot(φ)
     A = R * Diagonal([κ, 1.0]) * R'
     X0 = (x0_raw ./ norm(x0_raw))[:, :]
@@ -70,19 +70,19 @@ for (φ, x0_raw, α) in scenarios
     _, res_landing, _, _, iter_landing = silent() do
         landing_flow(∇f!, f, q, X0, λ_landing, α_landing, τ, r; niter=niter)
     end
+
+    α_pogo_i = i == 3 ? 0.8 : 1.0
     _, res_pogo, _, _, iter_pogo = silent() do
-        pogo(X0, ∇f!, f, q, α, τ, r, λ_pogo; niter=niter)
+        pogo(X0, ∇f!, f, q, α_pogo_i, τ, r, λ_pogo; niter=niter)
     end
 
-    println("X0=$(fmt(iter_rgd[:, 1, 1])) X*=$(fmt(V)) (φ=$φ, α=$α)  Résidu final RGD: ", res_rgd[end],
+    println("X0=$(fmt(iter_rgd[:, 1, 1])) X*=$(fmt(V)) (φ=$φ, α=$α, α_pogo=$α_pogo_i)  Résidu final RGD: ", res_rgd[end],
         "  Landing: ", res_landing[end], "  POGO: ", res_pogo[end])
 
     push!(results, (iter_rgd, iter_landing, iter_pogo, V))
 end
 
-# Étendue commune : le plus grand écart (X ou Y) observé sur tous les
-# scénarios + marge, appliqué de façon identique aux 3 panneaux pour que
-# chaque sous-figure occupe le même espace, centrée sur sa propre trajectoire.
+
 pad = 0.05
 span = maximum(r -> begin
         all_x = vcat(r[1][1, 1, :], r[2][1, 1, :], r[3][1, 1, :], r[4][1])
@@ -108,7 +108,7 @@ for (i, (iter_rgd, iter_landing, iter_pogo, V)) in enumerate(results)
         legend=leg, legendfontsize=6)
 
     plot!(pl, iter_rgd[1, 1, :], iter_rgd[2, 1, :],
-        color=color_rgd, marker=:circle, markersize=6, linewidth=2.5, label="RGD")
+        color=color_rgd, marker=:circle, markersize=6, label="RGD")
     plot!(pl, iter_landing[1, 1, :], iter_landing[2, 1, :],
         color=color_landing, marker=:circle, markersize=6, linewidth=2.5, linestyle=:dashdot, label="Landing")
     plot!(pl, iter_pogo[1, 1, :], iter_pogo[2, 1, :],

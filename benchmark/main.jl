@@ -25,7 +25,7 @@ color_landing = plasma[0.6]
 color_pogo = plasma[0.9]
 
 
-pca_boolean = true
+pca_boolean = false
 procruste_boolean = true
 
 n = 100
@@ -72,17 +72,17 @@ if pca_boolean
     _, res_landing, dist_landing, _, _ = landing_flow(∇f!, f, q, X0, λ_landing, α_landing, τ, r; niter=niter)
     _, res_pogo, dist_pogo, _, _ = pogo(X0, ∇f!, f, q, α_pogo, τ, r, λ_pogo; niter=niter)
 
-    pl1 = plot(xlabel="Iteration", ylabel=L"q(X)", res_pogo, yaxis=:log10, label="Pogo", alpha=0.8, linewidth=1.8, color=color_pogo,
-        grid=true, gridalpha=0.3, minorticks=true, tick_direction=:in)
-    plot!(pl1, res_landing, yaxis=:log10, label="landing", alpha=0.8, color=color_landing, linewidth=1.0)
-    plot!(pl1, res_rgd, yaxis=:log10, label="RGD (Polar)", color=color_rgd, alpha=0.8, linewidth=1.2)
-    plot!(pl1, res_rgd_qr, yaxis=:log10, label="RGD (QR)", color=color_rgd_qr, alpha=0.8, linewidth=0.6)
+    pl1 = plot(xlabel="Iteration", ylabel=L"q(X)", res_pogo, yaxis=:log10, label="Pogo", alpha=1.0, color=color_pogo,
+        linestyle=:dash, minorticks=true, tick_direction=:in, linewidth=3)
+    plot!(pl1, res_landing, yaxis=:log10, label="landing", alpha=0.8, color=color_landing, linestyle=:dot)
+    plot!(pl1, res_rgd, yaxis=:log10, label="RGD (Polar)", color=color_rgd, alpha=0.8)
+    plot!(pl1, res_rgd_qr, yaxis=:log10, label="RGD (QR)", color=color_rgd_qr, alpha=0.8)
 
-    pl2 = plot(xlabel="Iteration", ylabel=L"\|| XX^\top - I_p\||", max.(dist_pogo, ε), yaxis=:log10, label="POGO", alpha=0.8, linewidth=1, color=color_pogo,
-        grid=true, gridalpha=0.3, minorticks=true, tick_direction=:in)
-    plot!(pl2, max.(dist_landing, ε), yaxis=:log10, label="Landing", alpha=0.8, color=color_landing, linewidth=1.0)
-    plot!(pl2, max.(dist_rgd, ε), label="RGD (Polar)", color=color_rgd, alpha=0.8, linewidth=1.0)
-    plot!(pl2, max.(dist_rgd_qr, ε), label="RGD (QR)", color=color_rgd_qr, alpha=0.8, linewidth=1.0)
+    pl2 = plot(xlabel="Iteration", ylabel=L"\|| XX^\top - I_p\||", max.(dist_pogo, ε), yaxis=:log10, label="POGO", alpha=0.8, color=color_pogo,
+        linestyle=:dash, minorticks=true, tick_direction=:in)
+    plot!(pl2, max.(dist_landing, ε), yaxis=:log10, label="Landing", alpha=0.8, color=color_landing, linestyle=:dot)
+    plot!(pl2, max.(dist_rgd, ε), label="RGD (Polar)", color=color_rgd, alpha=0.8)
+    plot!(pl2, max.(dist_rgd_qr, ε), label="RGD (QR)", color=color_rgd_qr, alpha=0.8)
 
     pl_pca = plot(pl1, pl2, layout=(1, 2), size=(1000, 300), left_margin=5Plots.mm, bottom_margin=10Plots.mm)
 
@@ -130,17 +130,17 @@ if procruste_boolean
     _, res_landing_proc, dist_landing_proc, _, _ = landing_flow(∇f_proc!, f_proc, q_proc, X0_proc, λ_landing_proc, α_landing_proc, τ, r; niter=niter)
     _, res_pogo_proc, dist_pogo_proc, _, _ = pogo(X0_proc, ∇f_proc!, f_proc, q_proc, α_pogo_proc, τ, r, λ_pogo_proc; niter=niter)
 
-    pl3 = plot(xlabel="Iteration", ylabel=L"p(X)", res_pogo_proc, yaxis=:log10, label="Pogo", alpha=0.8, linewidth=1.2, color=color_pogo,
-    grid=true, gridalpha=0.3, minorticks=true, tick_direction=:in)
-    plot!(pl3, res_landing_proc, yaxis=:log10, label="Landing", alpha=0.8, color=color_landing, linewidth=1.0)
-    plot!(pl3, res_rgd_proc, yaxis=:log10, label="RGD (Polar)", color=color_rgd, alpha=0.8, linewidth=1.0)
-    plot!(pl3, res_rgd_qr_proc, yaxis=:log10, label="RGD (QR)", color=color_rgd_qr, alpha=0.8, linewidth=1.0)
+    pl3 = plot(xlabel="Iteration", ylabel=L"p(X)", res_pogo_proc, yaxis=:log10, label="Pogo" , color=color_pogo,
+    linestyle=:dash, minorticks=true, tick_direction=:in, linewidth=3)
+    plot!(pl3, res_landing_proc, yaxis=:log10, label="Landing", alpha=0.8, color=color_landing, linestyle=:dot)
+    plot!(pl3, res_rgd_proc, yaxis=:log10, label="RGD (Polar)", color=color_rgd, alpha=0.8 )
+    plot!(pl3, res_rgd_qr_proc, yaxis=:log10, label="RGD (QR)", color=color_rgd_qr, alpha=0.8 )
 
-    pl4 = plot(xlabel="Iteration", ylabel=L"\|| XX^\top - I_p\||", max.(dist_pogo_proc, ε), yaxis=:log10, label="POGO", alpha=1.2, linewidth=1, color=color_pogo,
-    grid=true, gridalpha=0.3, minorticks=true, tick_direction=:in)
-    plot!(pl4, max.(dist_landing_proc, ε), yaxis=:log10, label="Landing", alpha=0.8, color=color_landing, linewidth=1.0)
-    plot!(pl4, max.(dist_rgd_proc, ε), label="RGD (Polar)", color=color_rgd, alpha=0.8, linewidth=1.0)
-    plot!(pl4, max.(dist_rgd_qr_proc, ε), label="RGD (QR)", color=color_rgd_qr, alpha=0.8, linewidth=1.0)
+    pl4 = plot(xlabel="Iteration", ylabel=L"\|| XX^\top - I_p\||", max.(dist_pogo_proc, ε), yaxis=:log10, label="POGO", alpha=0.8, color=color_pogo,
+    linestyle=:dash, minorticks=true, tick_direction=:in)
+    plot!(pl4, max.(dist_landing_proc, ε), yaxis=:log10, label="Landing", alpha=0.8, color=color_landing, linestyle=:dot)
+    plot!(pl4, max.(dist_rgd_proc, ε), label="RGD (Polar)", color=color_rgd, alpha=0.8)
+    plot!(pl4, max.(dist_rgd_qr_proc, ε), label="RGD (QR)", color=color_rgd_qr, alpha=0.8 )
 
     pl_proc = plot(pl3, pl4, layout=(1, 2), size=(1000, 300), left_margin=5Plots.mm, bottom_margin=10Plots.mm)
 

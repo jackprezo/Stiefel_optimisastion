@@ -39,7 +39,7 @@ silent(f) = redirect_stdout(f, devnull)
 # ---------------------------------------------------------------------------
 n = 100
 p = 10
-niter = 150
+niter = 10
 n_runs = 1   # nombre de tirages Monte-Carlo par point de la grille
 ε = 1e-16
 
@@ -50,11 +50,11 @@ r = 1e-2
 grad_C(∇f, X) = ∇f - X * ∇f' * X
 
 # Grilles 1D (RGD, POGO)
-α_grid = 10.0 .^ range(-7, -4, length=12)
+α_grid = 10.0 .^ range(-6, -2, length=12)
 
 # Grille 2D (Landing) : α (pas) × λ (poids de pénalité)
-α_grid_landing = 10.0 .^ range(-8, -4, length=10)
-λ_grid_landing = 10.0 .^ range(-2, 10, length=10)
+α_grid_landing = 10.0 .^ range(-6, -2, length=10)
+λ_grid_landing = 10.0 .^ range(0, 6, length=10)
 
 final_residual(res) = isfinite(res[end]) ? res[end] : NaN
 best(grid, res) = grid[argmin(abs.(replace(res, NaN => Inf)))]
@@ -176,7 +176,7 @@ ylim_lo = minimum(all_finite_1d) / 2
 ylim_hi = maximum(all_finite_1d) * 2
 
 pl_alpha = plot(xlabel=L"\alpha", ylabel=L"q(X)", xaxis=:log10, yaxis=:log10,
-    framestyle=:box, grid=true, gridalpha=0.3, ylims=(ylim_lo, ylim_hi))
+    framestyle=:box, ylims=(ylim_lo, ylim_hi))
 plot!(pl_alpha, α_grid, clipped_rgd_pca, label="RGD Polar", color=color_rgd_pca, marker=:circle, markersize=3)
 plot!(pl_alpha, α_grid, clipped_rgd_qr_pca, label="RGD QR", color=color_rgd_qr_pca, marker=:circle, markersize=3)
 plot!(pl_alpha, α_grid, clipped_pogo_pca, label="POGO", color=color_pogo_pca, marker=:circle, markersize=3)
@@ -290,7 +290,7 @@ savefig(pl_landing_pca, joinpath(plotsdir, "landing_alpha_lambda_combined.pdf"))
 # ===========================================================================
 
 pl_alpha_pca = plot(xlabel=L"\alpha", ylabel=L"q(X)", xaxis=:log10, yaxis=:log10,
-    framestyle=:box, grid=true, gridalpha=0.3)
+    framestyle=:box)
 plot!(pl_alpha_pca, α_grid, clipped_rgd_pca, label="RGD Polar", color=color_rgd_pca, marker=:circle, markersize=3)
 plot!(pl_alpha_pca, α_grid, clipped_rgd_qr_pca, label="RGD QR", color=color_rgd_qr_pca, marker=:circle, markersize=3)
 plot!(pl_alpha_pca, α_grid, clipped_pogo_pca, label="POGO", color=color_pogo_pca, marker=:circle, markersize=3)
@@ -313,7 +313,7 @@ savefig(pl_pca_params, joinpath(plotsdir, "pca_params.pdf"))
 # ===========================================================================
 
 pl_alpha_proc = plot(xlabel=L"\alpha", ylabel=L"p(X)", xaxis=:log10, yaxis=:log10,
-    framestyle=:box, grid=true, gridalpha=0.3)
+    framestyle=:box)
 plot!(pl_alpha_proc, α_grid, clipped_rgd_proc, label="RGD Polar", color=color_rgd_proc, marker=:circle, markersize=3)
 plot!(pl_alpha_proc, α_grid, clipped_rgd_qr_proc, label="RGD QR", color=color_rgd_qr_proc, marker=:circle, markersize=3)
 plot!(pl_alpha_proc, α_grid, clipped_pogo_proc, label="POGO", color=color_pogo_proc, marker=:circle, markersize=3)
