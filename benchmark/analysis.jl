@@ -1,153 +1,198 @@
 using LinearAlgebra
-using Statistics
 using Printf
+using Random
+using Plots
+using LaTeXStrings
+using StiefelBenchmarks
 
-BLAS.set_num_threads(1)
+isdefined(@__MODULE__, :initialize_experiment) || include("common.jl")
 
-# ---------------------------------------------------------------------------
-# Paramètres du problème
-# ---------------------------------------------------------------------------
-pca_boolean = false
-procruste_boolean = true
+"""Construct a starting matrix with a prescribed Stiefel deviation."""
+function make_deviated_start(n, p, target_deviation; rng=Random.default_rng())
+    1 <= p <= n || throw(ArgumentError("Expected 1 <= p <= n."))
+    isfinite(target_deviation) && target_deviation > 0 ||
+        throw(ArgumentError("The target deviation must be positive and finite."))
 
-n = 1000
-p = 10
-niter = 1
+    Q = Matrix(qr(randn(rng, n, p)).Q)
+    perturbation = randn(rng, n, p)
+    perturbation ./= norm(perturbation)
+    deviation_at(scale) = stiefel_distance(Q + scale .* perturbation)
 
-# Paramètres de la borne théorique
-K_factor = sqrt(2)         # Constante issue de la démonstration rigoureuse
-ε_margin = 10.0            # ε_threshold = ε_margin × δ_X0 (marge au-dessus du bruit numérique de X0)
-
-# ---------------------------------------------------------------------------
-# Initialisation du problème (PCA ou Procrustes)
-# ---------------------------------------------------------------------------
-if procruste_boolean
-    prob_name = "Procrustes"
-    B1_proc = randn(n, n)
-    A_proc = B1_proc' * B1_proc
-    A_proc ./= opnorm(A_proc)   # normalisation : ||A_proc|| = 1, gradient à échelle raisonnable indép. de n
-    X_opt_proc = Matrix(qr(randn(n, p)).Q)
-    B2_proc = A_proc * X_opt_proc
-
-    f_proc(X) = norm(A_proc * X - B2_proc)^2
-    AtA_proc = A_proc' * A_proc
-    AtB2_proc = A_proc' * B2_proc
-    @views function ∇f_proc!(out, X)
-        mul!(out, AtA_proc, X)
-        out .*= 2
-        out .-= 2 .* AtB2_proc
-        return out
+    lo, hi = 0.0, 1.0
+    for _ in 1:64
+        deviation_at(hi) >= target_deviation && break
+        hi *= 2
     end
-    
-    X0 = Matrix(qr(randn(n, p)).Q)   # retraction initiale sur la variété de Stiefel
-    ∇f! = ∇f_proc!
-
-elseif pca_boolean
-    prob_name = "PCA"
-    B1 = randn(n, n)
-    A = B1' * B1
-    A ./= opnorm(A)   # normalisation : ||A|| = 1, gradient à échelle raisonnable indép. de n
-    U = Diagonal(Array(p:-1:1))
-    _u_diag = U.diag
-
-    f(X) = -tr(X' * A * X * U)
-    @views function ∇f_pca!(out, X)
-        mul!(out, A, X)
-        out .*= -2 .* _u_diag'
-        return out
-    end
-
-    X0 = Matrix(qr(randn(n, p)).Q)   # retraction initiale sur la variété de Stiefel
-    ∇f! = ∇f_pca!
-else
-    error("Veuillez activer au moins un problème (pca_boolean ou procruste_boolean).")
-end
-
-# ---------------------------------------------------------------------------
-# Calcul de la borne théorique alpha_théorique à X0
-# ---------------------------------------------------------------------------
-∇f_0 = zeros(n, p)
-∇f!(∇f_0, X0)
-
-
-ψ_0 = ∇f_0 * X0' - X0 * ∇f_0'
-norm_ψ0 = norm(ψ_0)
-
-δ_X0 = norm(X0' * X0 - I(p))
-ε_threshold =  δ_X0
-
-# Borne garantie : \alpha <= sqrt( (sqrt(2)-1) * \epsilon / ((1+\epsilon) * ||\psi(X0)||_F^2) )
-α_theory_max = sqrt(((K_factor - 1.0) * ε_threshold) / ((1.0 + ε_threshold) * norm_ψ0^2))
-
-# ---------------------------------------------------------------------------
-# En-tête du Rapport
-# ---------------------------------------------------------------------------
-println("\n" * "═"^80)
-println("   ANALYSE DE STABILITÉ EXPÉRIMENTALE VS BORNE THÉORIQUE (ALGORITHME POGO)")
-println("═"^80)
-@printf(" Problème étudié                : %s (n = %d, p = %d)\n", prob_name, n, p)
-@printf(" Déviation initiale ||X0'X0-I||_F: %.6e\n", δ_X0)
-@printf(" Norme ||ψ(X0)||_F              : %.6e\n", norm_ψ0)
-@printf(" Seuil d'orthogonalité ε cible  : %.6e (= %.1f × δ_X0)\n", ε_threshold, ε_margin)
-println("─"^80)
-@printf(" ==> PAS MAXIMAL THÉORIQUE GARANTI : α_théorique <= %.6e\n", α_theory_max)
-println("═"^80)
-
-# ---------------------------------------------------------------------------
-# Grid Search sur le pas \alpha (de 10^-2 * α_théorique à 10^2 * α_théorique)
-# ---------------------------------------------------------------------------
-num_points = 25
-alphas_test = 10 .^ range(log10(α_theory_max * 1e-2), log10(α_theory_max * 1e5), length=num_points)
-
-println("\n" * "┌" * "─"^78 * "┐")
-@printf("│ %-14s │ %-20s │ %-15s │ %-18s │\n", "Pas α", "Max ||X'X - I_p||_F", "Ratio α/α_théo", "Statut Stabilité")
-println("├" * "─"^78 * "┤")
-
-for α in alphas_test
-    X_k = copy(X0)
-    max_dev = norm(X_k' * X_k - I(p))
-    diverged = false
-    
-    for k in 1:niter
-        ∇f_k = zeros(n, p)
-        ∇f!(∇f_k, X_k)
-        ψ_k = ∇f_k * X_k' - X_k * ∇f_k'
-        
-        
-        M_k = X_k - α * (ψ_k * X_k)
-        X_k = 1.5 * M_k - 0.5 * (M_k * (M_k' * M_k))
-        
-        dev = norm(X_k' * X_k - I(p))
-        
-        if isnan(dev) || dev > 1e4
-            diverged = true
-            max_dev = Inf
-            break
+    deviation_at(hi) >= target_deviation ||
+        error("Could not bracket the requested initial deviation.")
+    for _ in 1:80
+        mid = (lo + hi) / 2
+        if deviation_at(mid) < target_deviation
+            lo = mid
+        else
+            hi = mid
         end
-        max_dev = max(max_dev, dev)
     end
-    
-    ratio = α / α_theory_max
-    
-    # Formatage du statut
-    statut_str = if diverged
-        "DIVERGENCE (Inf)"
-    elseif max_dev <= ε_threshold
-        "STABLE (<= ε)"
-    else
-        "INVALIDE (> ε)"
-    end
-    
-    # Indicateur visuel pour la borne théorique
-    is_near_theory = abs(log10(ratio)) < 0.1
-    prefix = is_near_theory ? "👉" : "  "
-
-    if diverged
-        @printf("%s│ %-14.6e │ %-20s │ %-15.3f │ %-18s │\n", prefix, α, "       Inf          ", ratio, statut_str)
-    else
-        @printf("%s│ %-14.6e │ %-20.6e │ %-15.3f │ %-18s │\n", prefix, α, max_dev, ratio, statut_str)
-    end
+    return Q + ((lo + hi) / 2) .* perturbation
 end
 
-println("└" * "─"^78 * "┘")
-println("Note : 👉 indique le pas le plus proche de la borne théorique α_théorique.\n")
+"""Evaluate the deviation after one POGO step, treating divergence as infinite."""
+function pogo_step_deviation(gradient!, X, alpha)
+    direction = pogo_direction(gradient!, X)
+    deviation = stiefel_distance(pogo_step(X, direction, alpha))
+    return (!isfinite(deviation) || deviation > 1e4) ? Inf : deviation
+end
+
+"""Find the first unstable step ratio by geometric bisection."""
+function stability_boundary(gradient!, X, epsilon, alpha_theory; bisections=40)
+    isfinite(alpha_theory) && alpha_theory > 0 ||
+        error("The theoretical step must be positive and finite.")
+    stable(ratio) = pogo_step_deviation(gradient!, X, ratio * alpha_theory) <= epsilon
+
+    lo_ratio, hi_ratio = 1.0, 2.0
+    # Roundoff can move the theoretical endpoint outside the stable interval.
+    for _ in 1:64
+        stable(lo_ratio) && break
+        hi_ratio = lo_ratio
+        lo_ratio /= 2
+    end
+    stable(lo_ratio) || error("Could not find a stable lower step bound.")
+    for _ in 1:64
+        !stable(hi_ratio) && break
+        hi_ratio *= 2
+    end
+    !stable(hi_ratio) || error("Could not find an unstable upper step bound.")
+
+    for _ in 1:bisections
+        mid_ratio = sqrt(lo_ratio * hi_ratio)
+        if stable(mid_ratio)
+            lo_ratio = mid_ratio
+        else
+            hi_ratio = mid_ratio
+        end
+    end
+    return hi_ratio
+end
+
+"""Recompute the experimental step bound from the current POGO direction."""
+function adaptive_step_bound(X, direction)
+    deviation = stiefel_distance(X)
+    direction_norm = norm(direction)
+    (deviation <= 0 || deviation >= 1 || direction_norm == 0) && return 0.0
+    return sqrt((sqrt(deviation) - deviation) /
+                ((1.0 + deviation) * direction_norm^2))
+end
+
+"""Record deviations, including the initial state, with an adaptive step size."""
+function adaptive_deviation_trajectory(gradient!, X0; nsteps)
+    deviations = zeros(nsteps + 1)
+    alphas = zeros(nsteps)
+    X = copy(X0)
+    deviations[1] = stiefel_distance(X)
+    for k in 1:nsteps
+        direction = pogo_direction(gradient!, X)
+        alpha = adaptive_step_bound(X, direction)
+        alphas[k] = alpha
+        X = pogo_step(X, direction, alpha)
+        deviation = stiefel_distance(X)
+        deviations[k + 1] = (!isfinite(deviation) || deviation > 1e6) ? Inf : deviation
+    end
+    return deviations, alphas
+end
+
+"""Run the stability boundary sweep and adaptive deviation experiment."""
+function run_analysis(; output_dir=DEFAULT_OUTPUT_DIR, seed=0, quick=false)
+    rng = initialize_experiment(seed)
+    paths = output_paths(output_dir)
+    epsilons = quick ? [1e-2, 1e-8] : [1e-2, 1e-5, 1e-8, 1e-12]
+    sizes = quick ? [(20, 3)] : [(100, 10), (500, 50), (1000, 100)]
+    problems = [("PCA", make_pca_problem), ("Procrustes", make_procrustes_problem)]
+    nsteps = quick ? 8 : 15
+    initial_deviations = quick ? [1e-2, 1e-6, 1e-12] : [1e-2, 1e-4, 1e-6, 1e-9, 1e-12]
+    trajectory_size = quick ? (20, 3) : (100, 10)
+    outfile = joinpath(paths.data, "analysis_stability.txt")
+
+    open(outfile, "w") do io
+        @printf(io, "%-12s %-6s %-6s %-12s %-14s %-14s %-12s %-10s %-14s %s\n",
+            "problem", "n", "p", "epsilon", "norm_psi0", "alpha_theory", "alpha",
+            "ratio", "dev_1step", "status")
+        for (problem_name, make_problem) in problems
+            for (n, p) in sizes
+                gradient! = make_problem(n, p; rng=rng).gradient!
+                for epsilon in epsilons
+                    X0 = make_deviated_start(n, p, epsilon; rng=rng)
+                    gradient = similar(X0)
+                    gradient!(gradient, X0)
+                    skew = gradient * X0' - X0 * gradient'
+                    skew_norm = norm(skew)
+                    # The boundary uses the full n-by-n skew matrix norm.
+                    alpha_theory = sqrt((sqrt(epsilon) - epsilon) /
+                                        ((1.0 + epsilon) * skew_norm^2))
+                    ratio = stability_boundary(gradient!, X0, epsilon, alpha_theory)
+                    alpha = ratio * alpha_theory
+                    deviation = pogo_step_deviation(gradient!, X0, alpha)
+                    status = isfinite(deviation) ? "INVALID" : "DIVERGENCE"
+                    @printf(io, "%-12s %-6d %-6d %-12.4g %-14.6e %-14.6e %-12.6e %-10.4f %-14.6e %s\n",
+                        problem_name, n, p, epsilon, skew_norm, alpha_theory, alpha,
+                        ratio, deviation, status)
+                    @printf("%s n=%d p=%d epsilon=%.2e: boundary/theory=%.4f\n",
+                        problem_name, n, p, epsilon, ratio)
+                    flush(io)
+                end
+            end
+        end
+    end
+
+    # The adaptive experiment uses the n-by-p direction norm, as in the original
+    # experiment. It is distinct from the full skew norm in the boundary sweep.
+    rng = initialize_experiment(seed)
+    n, p = trajectory_size
+    gradient! = make_pca_problem(n, p; rng=rng).gradient!
+    linestyles = [:solid, :dash, :dot, :dashdot, :dashdotdot]
+    markers = [:circle, :rect, :utriangle, :diamond, :star5]
+    palette = [cgrad(:plasma)[t] for t in range(0.05, 0.85, length=length(initial_deviations))]
+    configure_plots(minorticks=true, tick_direction=:in)
+    trajectory_plot = plot(xlabel="Iteration", ylabel=L"\|| X^\top X - I_p\||_F",
+        yaxis=:log10, legend=:topright, legendfontsize=9, size=(1000, 300),
+        left_margin=6Plots.mm, bottom_margin=7Plots.mm)
+    trajectories = Vector{Vector{Float64}}()
+    trajectory_alphas = Vector{Vector{Float64}}()
+    for (index, epsilon) in enumerate(initial_deviations)
+        X0 = make_deviated_start(n, p, epsilon; rng=rng)
+        deviations, alphas = adaptive_deviation_trajectory(gradient!, X0; nsteps=nsteps)
+        push!(trajectories, deviations)
+        push!(trajectory_alphas, alphas)
+        color = palette[index]
+        iterations = 0:nsteps
+        values = logclip(deviations; floor=1e-300)
+        plot!(trajectory_plot, iterations, values, color=color, linewidth=3,
+            linestyle=linestyles[index],
+            label=L"\varepsilon_0 = 10^{%$(round(Int, log10(epsilon)))}")
+        marker_indices = 1:6:length(iterations)
+        scatter!(trajectory_plot, collect(iterations)[marker_indices], values[marker_indices],
+            color=color, marker=markers[index], markersize=7, markerstrokecolor=:black,
+            markerstrokewidth=1, label="")
+        hline!(trajectory_plot, [epsilon], color=color, linestyle=:dot, linewidth=2, label="")
+    end
+    trajectory_datafile = joinpath(paths.data, "analysis_deviation_trajectory.txt")
+    open(trajectory_datafile, "w") do io
+        println(io, "epsilon0 iteration deviation alpha")
+        for (index, epsilon) in enumerate(initial_deviations)
+            for iteration in 0:nsteps
+                # Alpha is the outgoing step; the final state has no next step.
+                alpha = iteration < nsteps ? trajectory_alphas[index][iteration + 1] : NaN
+                @printf(io, "%.17e %d %.17e %.17e\n", epsilon, iteration,
+                    trajectories[index][iteration + 1], alpha)
+            end
+        end
+    end
+    plotfile = joinpath(paths.plots, "analysis_deviation_trajectory.pdf")
+    savefig(trajectory_plot, plotfile)
+    println("Stability results saved to ", outfile)
+    println("Deviation plot saved to ", plotfile)
+    return (; datafile=outfile, trajectory_datafile, plotfile, trajectories)
+end
+
+if abspath(PROGRAM_FILE) == @__FILE__
+    run_analysis(; experiment_options(ARGS)...)
+end
