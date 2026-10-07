@@ -1,1 +1,0 @@
-nthread  n      p      method         alpha        residual q(X)  dist Stiefel   time (s)      
